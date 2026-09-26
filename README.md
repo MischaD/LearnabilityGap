@@ -27,7 +27,7 @@ We show it usually can't: across **5 autoencoder families** and **4 medical benc
 
 ```bash
 git clone https://github.com/MischaD/LearnabilityGap.git && cd LearnabilityGap
-pip install torch torchvision diffusers medvae scikit-learn pandas mlxtend ml_collections opencv-python tqdm einops matplotlib
+pip install torch torchvision diffusers medvae scikit-learn pandas mlxtend ml_collections opencv-python Pillow tqdm einops matplotlib
 ```
 
 Run everything from the repo root with `PYTHONPATH=.`. Provide the four dataset CSVs under `data/`; the `path` column resolves against whatever you pass as `--data_dir`.
