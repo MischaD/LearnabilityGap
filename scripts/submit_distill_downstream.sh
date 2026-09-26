@@ -52,8 +52,6 @@ CSV_PATH="$BASE_DIR/$DS.csv"
 LATENTS_DIR="$BASE_DIR/outputs/outputs_${MODEL_EXP_NAME}_${DS}/latents"
 OUT_DIR="$BASE_DIR/outputs/flux2distilled_from_imagespace/${DS}"
 
-# Define custom teacher model directory for this specific downstream dataset
-# (contains subdirs like cxr-lt_resnet50_rw-cb_ldam-drw_cb-beta-0.9999_lr-0.0001_bs-256_fold_0/best.pt)
 TEACHER_DIR="$BASE_DIR/outputs/outputs_imagespace/image_space/${DS}"
 
 if [ ! -d "$LATENTS_DIR" ]; then

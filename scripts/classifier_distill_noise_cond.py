@@ -21,7 +21,6 @@ from src.downstream.losses import get_loss, get_CB_weights
 from src.latent import get_latent_model
 from sklearn.preprocessing import LabelBinarizer
 
-# --- NOISE CONDITIONING MODULES ---
 def normalize(x, dim=None, eps=1e-4):
     if dim == None:
         dim = list(range(1, x.ndim))
@@ -121,7 +120,6 @@ class NoiseConditionedConvNeXt(nn.Module):
         x = self.backbone.classifier(x)
         return x
 
-# --- DATASET ---
 class DistillationDataset(torch.utils.data.Dataset):
     def __init__(self, data_dir, latent_dir, filelist, split, mean_path=None, std_path=None):
         self.data_dir = data_dir
@@ -162,7 +160,6 @@ class DistillationDataset(torch.utils.data.Dataset):
         y = np.array(self.labels[idx])
         return latent.float(), img.float(), torch.from_numpy(y).long()
 
-# --- TRAINING LOOP ---
 def train_distill_noise_cond(student, teacher, device, loss_fxn, optimizer, data_loader, history, epoch, model_dir, alpha):
     student.train()
     teacher.eval()
@@ -218,7 +215,6 @@ def validate_distill_noise_cond(student, teacher, device, loss_fxn, optimizer, d
             latent, img, y = latent.to(device), img.to(device), y.to(device)
             teacher_logits = teacher(img)
             
-            # evaluate without noise
             student_logits = student(latent, sigma=None)
             
             ce_loss = loss_fxn(student_logits, y)

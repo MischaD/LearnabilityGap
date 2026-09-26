@@ -35,7 +35,6 @@ class EncodedModel(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            # Ensure input is in the correct dtype for VAE (usually float16 on GPU)
             vae_dtype = next(self.encoder.parameters()).dtype
             # x: [B, 3, H, W]
             if hasattr(self.encoder, "model_name") and "medvae" in self.encoder.model_name:
@@ -53,7 +52,6 @@ class EncodedModel(nn.Module):
                     mask = torch.rand(latents.shape[0], latents.shape[1], 1, 1, device=latents.device) > self.mask_ratio
                 latents = latents * mask
                 
-        # Pass latents to classifier, ensuring they are back to float32 if needed
         return self.classifier(latents.to(x.dtype))
 
 def save_setting_summary(args, model_dir, n_classes, classes):
@@ -134,11 +132,8 @@ def perform_crossfold(filelist: str, fold_num: int, aug_dir: str = ""):
             path_col = 'id'
             
         if path_col:
-            # We assume aug_dir is an absolute path to the generated images
-            # Using os.path.join to prepend aug_dir to relative path
             train_df[path_col] = train_df[path_col].apply(lambda p: os.path.join(aug_dir, p) if not str(p).startswith('/') else p)
             
-            # If the CSV has a ".pt" ending or similar (as latents might), we keep the original extension or assume Dataset handles it
             df = pd.concat([df, train_df], ignore_index=True)
             print(f"Augmentation: Added {len(train_df)} synthesized samples from {aug_dir} to TRAIN split.")
 
@@ -193,7 +188,6 @@ def main(args):
     MODEL_NAME += 'reloadbest' if args.drw_reloadbest else ''
     MODEL_NAME += f'_cb-beta-{args.cb_beta}' if args.rw_method == 'cb' else ''
     MODEL_NAME += f'_fl-gamma-{args.fl_gamma}' if args.loss == 'focal' else ''
-    # Use format to ensure consistent decimal representation for learning rate
     lr_str = f"{args.lr:.4f}" if args.lr >= 1e-4 else f"{args.lr:g}"
     MODEL_NAME += f'_lr-{lr_str}'
     MODEL_NAME += f'_bs-{args.batch_size}'
@@ -267,7 +261,6 @@ def main(args):
             raise ValueError(f"Latent must be C x D x H (D == H), got {sample_x.shape}")
         print(f"Detected latent channels: {in_channels}")
     elif args.use_encoder:
-        # Load encoder early to determine in_channels
         print(f"Loading encoder from {args.vae_path} to determine latent shape")
         encoder = get_latent_model(path=args.vae_path, device=device, modality=args.modality)
         sample_img, _ = train_dataset[0]
@@ -312,7 +305,6 @@ def main(args):
                     ))
                     break
 
-        # Find last linear to handle model weight filtering and head replacement
         last_linear_name = None
         last_linear_module = None
         for name, module in model.named_modules():
@@ -322,7 +314,6 @@ def main(args):
 
         if args.model_path is not None:
             model_path = args.model_path
-            # Support {fold} and {ds} templating (same pattern as classifier_train_noise_cond.py)
             if '{fold}' in model_path and hasattr(args, 'fold'):
                 model_path = model_path.replace('{fold}', str(args.fold))
             if '{ds}' in model_path:
@@ -332,7 +323,6 @@ def main(args):
             checkpoint = torch.load(model_path, map_location='cpu')
             state_dict = checkpoint.get('weights', checkpoint)
             if last_linear_name is not None:
-                # Filter out classifier head weights to avoid shape mismatch
                 state_dict = {k: v for k, v in state_dict.items() if not k.startswith(last_linear_name)}
             msg = model.load_state_dict(state_dict, strict=False)
             print(f"Loaded pretrained weights with message: {msg}")
@@ -376,7 +366,6 @@ def main(args):
             if os.path.exists(std_path):
                 std = torch.load(std_path, map_location='cpu', weights_only=True).view(1, -1, 1, 1).to(device)
                 
-        # encoder is already loaded
         model = EncodedModel(encoder, model, mean=mean, std=std, mask_ratio=args.mask_ratio, mask_mode=args.mask_mode)
 
     model = model.to(device)        
@@ -402,11 +391,9 @@ def main(args):
 
     # Set optimizer
     if args.decoupling_method != '':
-        # If wrapped in EncodedModel, the classifier is model.classifier
         target_model = model.classifier if args.use_encoder else model
         optimizer = torch.optim.Adam(target_model.fc.parameters(), lr=args.lr)    
     else:
-        # If wrapped in EncodedModel, we only want to optimize the classifier part
         trainable_params = model.classifier.parameters() if args.use_encoder else model.parameters()
         optimizer = torch.optim.Adam(trainable_params, lr=args.lr)
 

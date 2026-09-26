@@ -23,7 +23,6 @@ CSV_FILE="imagenet_train.csv"
 mkdir -p outputs/logs
 mkdir -p "$OUTPUT_DIR"
 
-# Make sure PYTHON path is defined properly
 export PYTHONPATH="$(pwd)/syam:$PYTHONPATH"
 
 # Run distillation training

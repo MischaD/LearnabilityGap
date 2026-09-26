@@ -179,11 +179,9 @@ def evaluate_distill(model, device, dataset, batch_size, model_dir, weights):
     pred_df = pd.DataFrame(y_hat, columns=dataset.CLASSES)
     pred_df.to_csv(os.path.join(model_dir, 'test_pred.csv'), index=False)
     
-    # Save true labels as well
     true_df = pd.DataFrame(y_true, columns=['label'])
     true_df.to_csv(os.path.join(model_dir, 'test_true.csv'), index=False)
     
-    # Create summary text file describing final performance in format expected by evaluation scripts
     summary = f'Balanced Accuracy: {round(b_acc, 4)}\n'
     summary += f'Matthews Correlation Coefficient: {round(mcc, 4)}\n'
     summary += f'Mean AUC: {round(auc, 4)}\n\n'
@@ -216,7 +214,6 @@ class EncodedModel(nn.Module):
 
     def forward(self, x):
         with torch.no_grad():
-            # Ensure input is in the correct dtype for VAE (usually float16 on GPU)
             vae_dtype = next(self.encoder.parameters()).dtype
             # x: [B, 3, H, W]
             if hasattr(self.encoder, "model_name") and "medvae" in self.encoder.model_name:
@@ -234,7 +231,6 @@ class EncodedModel(nn.Module):
                     mask = torch.rand(latents.shape[0], latents.shape[1], 1, 1, device=latents.device) > self.mask_ratio
                 latents = latents * mask
                 
-        # Pass latents to classifier, ensuring they are back to float32 if needed
         return self.classifier(latents.to(x.dtype))
 
 def save_setting_summary(args, model_dir, n_classes, classes):
@@ -324,7 +320,6 @@ def main(args):
     MODEL_NAME += 'reloadbest' if args.drw_reloadbest else ''
     MODEL_NAME += f'_cb-beta-{args.cb_beta}' if args.rw_method == 'cb' else ''
     MODEL_NAME += f'_fl-gamma-{args.fl_gamma}' if args.loss == 'focal' else ''
-    # Use format to ensure consistent decimal representation for learning rate
     lr_str = f"{args.lr:.4f}" if args.lr >= 1e-4 else f"{args.lr:g}"
     MODEL_NAME += f'_lr-{lr_str}'
     MODEL_NAME += f'_bs-{args.batch_size}'
@@ -332,7 +327,6 @@ def main(args):
 
     model_dir = os.path.join(args.out_dir, MODEL_NAME)
     
-    # IDEMPOTENCY CHECK: Skip if test_summary.txt already exists (only if not test_only)
     if not args.test_only and os.path.exists(os.path.join(model_dir, 'test_summary.txt')):
         print(f"=== [IDEMPOTENCY] Skipping {MODEL_NAME} as test_summary.txt already exists. ===")
         return
@@ -340,7 +334,7 @@ def main(args):
     print(f"Training Model: {MODEL_NAME}")
     print(f"Output Directory: {model_dir}")
 
-    # Create output directory for model (and delete if already exists but incomplete)
+    # Create output directory for model
     os.makedirs(args.out_dir, exist_ok=True)
     if not args.test_only and os.path.isdir(model_dir):
         print(f"Removing existing incomplete directory: {model_dir}")
@@ -353,7 +347,6 @@ def main(args):
     # Prepare crossfold validation 
     filelist_to_use = args.filelist
     if args.do_crossfold:
-        # Create a temporary filelist for this fold securely inside its output directory
         dataset_name = os.path.basename(args.filelist).split('.')[0]
         new_filelist = os.path.join(model_dir, f"{dataset_name}_fold_{args.fold}.csv")
         shutil.copy(args.filelist, new_filelist)
@@ -411,8 +404,7 @@ def main(args):
         
         if in_channels != 3:
             print(f"Overwriting first Conv layer with in_channels={in_channels}")
-            # For ConvNeXt, the first layer is in features.0
-            original_conv = model.features[0][0]  # Get the Conv2d layer
+            original_conv = model.features[0][0]
             model.features[0][0] = nn.Conv2d(
                 in_channels, 
                 original_conv.out_channels, 
@@ -426,7 +418,6 @@ def main(args):
             print(f"Loading pretrained weights from {args.model_path}")
             checkpoint = torch.load(args.model_path, map_location='cpu')
             state_dict = checkpoint.get('weights', checkpoint)
-            # Filter out classifier head weights to avoid shape mismatch
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith('classifier.2.')}
             msg = model.load_state_dict(state_dict, strict=False)
             print(f"Loaded pretrained weights with message: {msg}")
@@ -455,7 +446,6 @@ def main(args):
             print(f"Loading pretrained weights from {args.model_path}")
             checkpoint = torch.load(args.model_path, map_location='cpu')
             state_dict = checkpoint.get('weights', checkpoint)
-            # Filter out classifier head weights to avoid shape mismatch
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith('fc.')}
             msg = model.load_state_dict(state_dict, strict=False)
             print(f"Loaded pretrained weights with message: {msg}")
@@ -488,7 +478,6 @@ def main(args):
             if os.path.exists(std_path):
                 std = torch.load(std_path, map_location='cpu', weights_only=True).view(1, -1, 1, 1).to(device)
                 
-        # encoder is already loaded
         model = EncodedModel(encoder, model, mean=mean, std=std, mask_ratio=args.mask_ratio, mask_mode=args.mask_mode)
 
     model = model.to(device)        
@@ -514,11 +503,9 @@ def main(args):
 
     # Set optimizer
     if args.decoupling_method != '':
-        # If wrapped in EncodedModel, the classifier is model.classifier
         target_model = model.classifier if args.use_encoder else model
         optimizer = torch.optim.Adam(target_model.fc.parameters(), lr=args.lr)    
     else:
-        # If wrapped in EncodedModel, we only want to optimize the classifier part
         trainable_params = model.classifier.parameters() if args.use_encoder else model.parameters()
         optimizer = torch.optim.Adam(trainable_params, lr=args.lr)
 

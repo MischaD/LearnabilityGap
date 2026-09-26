@@ -14,7 +14,6 @@ set -e
 source ~/miniforge3/bin/activate
 conda activate /lus/lfs1aip2/projects/u6db/conda/longtail
 
-# Find project root (assumed to be two levels up from this script in syam/scripts/)
 if [[ -n "$SLURM_SUBMIT_DIR" ]]; then
     SCRIPT_DIR="$SLURM_SUBMIT_DIR/syam/scripts"
 else
@@ -70,7 +69,6 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Execute the training script using our distilled latent space checkpoint
 python "$TRAIN_SCRIPT" \
     --data_dir "$LATENTS_DIR" \
     --filelist "$CSV_PATH" \

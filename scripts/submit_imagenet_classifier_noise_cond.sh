@@ -23,7 +23,6 @@ MEAN_PATH="${LATENTS_DIR}/imagenet_stats_channel_mean.pt"
 mkdir -p outputs/logs
 mkdir -p "$OUTPUT_DIR"
 
-# Make sure PYTHON path is defined properly
 export PYTHONPATH="$(pwd)/syam:$PYTHONPATH"
 
 # Run noise conditioned training

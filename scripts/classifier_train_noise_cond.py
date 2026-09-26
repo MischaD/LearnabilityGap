@@ -17,7 +17,6 @@ from src.downstream.utils_noise_cond import *
 from src.downstream.losses import *
 from src.latent import get_latent_model
 
-# --- NOISE CONDITIONING MODULES ---
 # Borrowed from EDM-2 for generating the time embedding
 def normalize(x, dim=None, eps=1e-4):
     if dim == None:
@@ -65,18 +64,14 @@ class NoiseConditionedConvNeXt(nn.Module):
         super().__init__()
         self.backbone = backbone
         
-        # Latent Normalization
         self.register_buffer('mean', mean) if mean is not None else setattr(self, 'mean', None)
         self.register_buffer('std', std) if std is not None else setattr(self, 'std', None)
         self.TARGET_STD = 0.5
         
-        # Time Embedding
         self.time_fourier = MPFourier(embed_dim)
         self.time_proj1 = MPConv(embed_dim, embed_dim)
         self.time_proj2 = MPConv(embed_dim, embed_dim)
         
-        # FiLM layers for ConvNeXt stages (Tiny has 4 stages with dimensions: 96, 192, 384, 768)
-        # In ConvNeXt features, the stages are typically at indices 1, 3, 5, 7.
         self.film_projs = nn.ModuleList([
             nn.Linear(embed_dim, 96 * 2),
             nn.Linear(embed_dim, 192 * 2),
@@ -84,13 +79,11 @@ class NoiseConditionedConvNeXt(nn.Module):
             nn.Linear(embed_dim, 768 * 2)
         ])
         
-        # Zero-initialize FiLM projections so they start as an identity mapping
         for proj in self.film_projs:
             nn.init.zeros_(proj.weight)
             nn.init.zeros_(proj.bias)
 
     def encode_time(self, sigma):
-        # Log scaling of sigma according to EDM
         c_noise = sigma.flatten().log() / 4
         emb = self.time_fourier(c_noise)
         emb = mp_silu(self.time_proj1(emb))
@@ -98,38 +91,31 @@ class NoiseConditionedConvNeXt(nn.Module):
         return emb
 
     def forward(self, x, sigma):
-        # Normalization
         if self.mean is not None and self.std is not None:
             x = (x - self.mean) * (self.TARGET_STD / self.std.clamp(min=1e-12))
             
-        # Noise Injection during training or if a specific sigma is passed
         if sigma is not None:
             noise = torch.randn_like(x)
             x = x + noise * sigma.view(-1, 1, 1, 1)
         else:
-            # Pass a very small sigma instead of 0 to avoid log(0) = -inf
             sigma = torch.full((x.shape[0],), 1e-5, device=x.device)
             
         emb = self.encode_time(sigma)
         
-        # Evaluate backbone layer by layer and inject FiLM
-        # ConvNeXt features: 0 (stem), 1 (stage1), 2 (down1), 3 (stage2), 4 (down2), 5 (stage3), 6 (down3), 7 (stage4)
         stage_indices = [1, 3, 5, 7]
         film_idx = 0
         
         for i, layer in enumerate(self.backbone.features):
             x = layer(x)
             if i in stage_indices:
-                film_params = self.film_projs[film_idx](emb) # [B, C*2]
+                film_params = self.film_projs[film_idx](emb)
                 scale, shift = film_params.chunk(2, dim=1)
-                # scale and shift are [B, C], x is [B, C, H, W]
                 x = x * (1 + scale.view(*scale.shape, 1, 1)) + shift.view(*shift.shape, 1, 1)
                 film_idx += 1
                 
         x = self.backbone.avgpool(x)
         x = self.backbone.classifier(x)
         return x
-# ----------------------------------
 
 def save_setting_summary(args, model_dir, n_classes, classes):
     summary_path = os.path.join(model_dir, 'setting_summary.txt')
@@ -218,7 +204,6 @@ def main(args):
     MODEL_NAME += 'reloadbest' if args.drw_reloadbest else ''
     MODEL_NAME += f'_cb-beta-{args.cb_beta}' if args.rw_method == 'cb' else ''
     MODEL_NAME += f'_fl-gamma-{args.fl_gamma}' if args.loss == 'focal' else ''
-    # Use format to ensure consistent decimal representation for learning rate
     lr_str = f"{args.lr:.4f}" if args.lr >= 1e-4 else f"{args.lr:g}"
     MODEL_NAME += f'_lr-{lr_str}'
     MODEL_NAME += f'_bs-{args.batch_size}'
@@ -226,7 +211,6 @@ def main(args):
 
     model_dir = os.path.join(args.out_dir, MODEL_NAME)
     
-    # IDEMPOTENCY CHECK: Skip if test_summary.txt already exists
     if os.path.exists(os.path.join(model_dir, 'test_summary.txt')):
         print(f"=== [IDEMPOTENCY] Skipping {MODEL_NAME} as test_summary.txt already exists. ===")
         return
@@ -234,7 +218,7 @@ def main(args):
     print(f"Training Model: {MODEL_NAME}")
     print(f"Output Directory: {model_dir}")
 
-    # Create output directory for model (and delete if already exists but incomplete)
+    # Create output directory for model
     os.makedirs(args.out_dir, exist_ok=True)
     if os.path.isdir(model_dir):
         print(f"Removing existing incomplete directory: {model_dir}")
@@ -247,7 +231,6 @@ def main(args):
     # Prepare crossfold validation 
     filelist_to_use = args.filelist
     if args.do_crossfold:
-        # Create a temporary filelist for this fold securely inside its output directory
         dataset_name = os.path.basename(args.filelist).split('.')[0]
         new_filelist = os.path.join(model_dir, f"{dataset_name}_fold_{args.fold}.csv")
         shutil.copy(args.filelist, new_filelist)
@@ -300,7 +283,6 @@ def main(args):
             raise ValueError(f"Latent must be C x D x H (D == H), got {sample_x.shape}")
         print(f"Detected latent channels: {in_channels}")
     elif args.use_encoder:
-        # Load encoder early to determine in_channels
         print(f"Loading encoder from {args.vae_path} to determine latent shape")
         encoder = get_latent_model(path=args.vae_path, device=device, modality=args.modality)
         sample_img, _ = train_dataset[0]
@@ -322,8 +304,7 @@ def main(args):
         
         if in_channels != 3:
             print(f"Overwriting first Conv layer with in_channels={in_channels}")
-            # For ConvNeXt, the first layer is in features.0
-            original_conv = model.features[0][0]  # Get the Conv2d layer
+            original_conv = model.features[0][0]
             model.features[0][0] = nn.Conv2d(
                 in_channels, 
                 original_conv.out_channels, 
@@ -335,18 +316,15 @@ def main(args):
         
         if args.model_path is not None:
             model_path = args.model_path
-            # Support templating for fold and dataset
             if "{fold}" in model_path and hasattr(args, 'fold'):
                 model_path = model_path.replace("{fold}", str(args.fold))
             if "{ds}" in model_path:
-                # We can try to infer dataset from the filelist or out_dir
                 ds_name = os.path.basename(args.filelist).split('.')[0]
                 model_path = model_path.replace("{ds}", ds_name)
             
             print(f"Loading pretrained weights from {model_path}")
             checkpoint = torch.load(model_path, map_location='cpu')
             state_dict = checkpoint.get('weights', checkpoint)
-            # Filter out classifier head weights to avoid shape mismatch
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith('classifier.2.')}
             msg = model.load_state_dict(state_dict, strict=False)
             print(f"Loaded pretrained weights with message: {msg}")
@@ -375,7 +353,6 @@ def main(args):
             print(f"Loading pretrained weights from {args.model_path}")
             checkpoint = torch.load(args.model_path, map_location='cpu')
             state_dict = checkpoint.get('weights', checkpoint)
-            # Filter out classifier head weights to avoid shape mismatch
             state_dict = {k: v for k, v in state_dict.items() if not k.startswith('fc.')}
             msg = model.load_state_dict(state_dict, strict=False)
             print(f"Loaded pretrained weights with message: {msg}")
@@ -407,7 +384,6 @@ def main(args):
         if os.path.exists(std_path):
             std = torch.load(std_path, map_location='cpu', weights_only=True).view(1, -1, 1, 1).to(device)
             
-    # Wrap model in NoiseConditionedConvNeXt
     model = NoiseConditionedConvNeXt(model, mean=mean, std=std)
 
     model = model.to(device)        
@@ -433,8 +409,6 @@ def main(args):
 
     # Set optimizer
     if args.decoupling_method != '':
-        # Since we are using NoiseConditionedConvNeXt, we access the linear head via model.backbone.classifier
-        # For ConvNeXt, the classifier head is the 3rd element in the classifier module
         target_model = model.backbone.classifier[2] if hasattr(model.backbone, 'classifier') else model.backbone.fc
         optimizer = torch.optim.Adam(target_model.parameters(), lr=args.lr)    
     else:

@@ -62,7 +62,6 @@ class ImageClassificationDataset(BaseClassificationDataset):
 class VAEImageDataset(BaseClassificationDataset):
     def __init__(self, data_dir, filelist, split):
         super().__init__(data_dir, filelist, split)
-        # VAE (e.g. FLUX) expects [-1, 1] normalization and usually larger images (512x512)
         if self.split == 'TRAIN' or self.split == 'train':
             self.transform = torchvision.transforms.Compose([
                 torchvision.transforms.ToPILImage(),
@@ -112,13 +111,11 @@ class LatentClassificationDataset(BaseClassificationDataset):
             if self.mask_mode == "default": 
                 mask = torch.rand(x.shape[0], x.shape[1], x.shape[2], device=x.device) > self.mask_ratio
                 x = x * mask
-            # Channel-wise masking: [C, 1, 1]
             elif self.mask_mode == "cw": 
                 mask = torch.rand(x.shape[0], 1, 1) > self.mask_ratio
                 x = x * mask
 
         if self.mean is not None and self.std is not None:
-            # Apply channel-wise normalization: (x - mean) * (TARGET_STD / std)
             x = (x - self.mean) * (self.TARGET_STD / self.std.clamp(min=1e-12))
 
         y = np.array(self.labels[idx])

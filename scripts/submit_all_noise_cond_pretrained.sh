@@ -63,7 +63,6 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Execute the training script using our distilled latent space checkpoint
 python "$TRAIN_SCRIPT" \
     --data_dir "$LATENTS_DIR" \
     --filelist "$CSV_PATH" \

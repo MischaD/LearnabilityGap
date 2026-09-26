@@ -11,14 +11,12 @@
 
 set -e
 
-# Capture $1 before sourcing conda activate, which would otherwise inherit it
 CLASSIFIER_MODEL="${1:-resnet50}"
-set --  # clear positional params so conda activate doesn't try to activate $1
+set --
 
 source ~/miniforge3/bin/activate
 conda activate /lus/lfs1aip2/projects/u6db/conda/longtail
 
-# Find project root (assumed to be two levels up from this script in syam/scripts/)
 if [[ -n "$SLURM_SUBMIT_DIR" ]]; then
     SCRIPT_DIR="$SLURM_SUBMIT_DIR/syam/scripts"
 else

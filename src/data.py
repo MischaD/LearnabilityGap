@@ -28,7 +28,7 @@ class ImageDataset(Dataset):
         full_path = os.path.join(self.root_dir, rel_path)
         image = Image.open(full_path).convert('RGB')
         if self.transform:
-            image = self.transform(image)  # Tensor expected
+            image = self.transform(image)
         return image, idx, rel_path
 
 
@@ -44,7 +44,6 @@ def get_distributed_image_dataloader(file_list, rank, world_size, config, base_n
     if base_name is None:
         base_name = os.path.dirname(config.filelist) if config.filelist.endswith(".csv") else config.filelist
 
-    # Build transform: resize to expected model input size, to tensor in [0,1], then scale to [-1,1]
     transform = T.Compose([
         T.Resize((512, 512)),
         T.ToTensor(),

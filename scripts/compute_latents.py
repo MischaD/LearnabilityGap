@@ -74,7 +74,6 @@ def process(
     with torch.no_grad():
         for images, _, paths in iterator:
             images = images.to(device, non_blocking=True)
-            # Ensure images match model dtype (e.g. float16 if using Flux on GPU)
             images = images.to(next(model.parameters()).dtype)
             image_latents = compute_latent_representation(
                 images, model, config.batch_size
@@ -103,12 +102,9 @@ def process(
 
     # Distributed reduction to get global sums across ranks
     if running_sum is None:
-        # No data on this rank; create zero tensors for reduction
         running_sum = torch.zeros(1, dtype=torch.float64, device=device)
         running_sum_sq = torch.zeros(1, dtype=torch.float64, device=device)
 
-    # Align shapes across ranks for all_reduce
-    # Broadcast channel dimension size from rank 0 if needed
     num_channels = torch.tensor([running_sum.numel()], dtype=torch.int64, device=device)
     dist.broadcast(num_channels, src=0)
     if running_sum.numel() != int(num_channels.item()):
@@ -138,27 +134,23 @@ def process(
 def apply_norm(
     rank: int,
     world_size: int, 
-    file_list,  # may be List[str] (expected) or a CSV path; we handle List[str]
+    file_list,
     config,
     save_path: str,
     stats_name: str,
 ): 
     setup(rank, world_size, config.master_port)
 
-    # Load stats computed in `process`
     mean = torch.load(os.path.join(save_path, f"{stats_name}_channel_mean.pt"))  # [C]
     std = torch.load(os.path.join(save_path, f"{stats_name}_channel_std.pt"))    # [C]
     TARGET_STD = 0.5
 
-    # Prepare affine params as float32 CPU tensors for broadcasting
     mean = mean.to(torch.float32).view(1, -1, 1, 1)
     std = std.to(torch.float32).clamp(min=1e-12)
     scale = (torch.tensor(TARGET_STD, dtype=torch.float32) / std).view(1, -1, 1, 1)  # [1,C,1,1]
     bias = (torch.zeros_like(mean) - mean * scale) # [1,C,1,1]
 
-    # Robustly ensure we have a Python list of relative paths
     if isinstance(file_list, str):
-        # If a CSV path ever slipped through, fall back to loader
         paths_only, _ = get_data(config)
     else:
         paths_only = file_list
@@ -193,7 +185,6 @@ def apply_norm(
             continue
         lat = torch.load(latent_path, map_location="cpu")  # expected [C,H,W]
         lat = apply_affine(lat)
-        # Overwrite in place
         os.makedirs(os.path.dirname(latent_path), exist_ok=True)
         torch.save(lat, latent_path)
 
@@ -215,13 +206,11 @@ def create_tarball_from_directory(source_dir: str, tarball_path: str) -> None:
 def run(config) -> None:
     world_size = torch.cuda.device_count()
 
-    # Only allow CSV input
     if not config.filelist.endswith(".csv"):
         raise ValueError("Only CSV files are supported as input. Please provide a .csv file.")
     
     file_list, _ = get_data(config)
 
-    # Output directory for raw .pt latents and stats (to be tarred after)
     latents_output_dir = getattr(config, "output_latents", None)
     if latents_output_dir is None:
         latents_output_dir = os.path.join(os.path.dirname(config.filelist), "Latents")
@@ -232,15 +221,12 @@ def run(config) -> None:
     ckpt_path = getattr(config, "ckpt_path", None)
     model = get_latent_model(path=config.vae_path, modality=config.modality, ckpt_path=ckpt_path)
 
-    # Determine stats paths
     mean_save_path = os.path.join(latents_output_dir, f"{config.stats_name}_channel_mean.pt")
     std_save_path = os.path.join(latents_output_dir, f"{config.stats_name}_channel_std.pt")
 
-    # SKIP LOGIC: check for last image and stats
     last_latent_path = os.path.join(latents_output_dir, file_list[-1] + ".pt")
     if os.path.exists(mean_save_path) and os.path.exists(std_save_path) and os.path.exists(last_latent_path):
         print(f"Skipping compute_latents because last image latent and stats already exist.")
-        # We still need to create tarball if it's missing or handle the cleanup if requested
     else:
         # Spawn workers
         mp.spawn(
@@ -257,7 +243,6 @@ def run(config) -> None:
             join=True,
         )
 
-        # Spawn workers for normalization unless skipped
         if not config.skip_norm:
             mp.spawn(
                 apply_norm,
@@ -286,7 +271,6 @@ def run(config) -> None:
         create_tarball_from_directory(latents_output_dir, tarball_path)
         print(f"Created tarball: {tarball_path}")
 
-    # Load and output stats for convenience
     mean_path = os.path.join(latents_output_dir, f"{config.stats_name}_channel_mean.pt")
     std_path = os.path.join(latents_output_dir, f"{config.stats_name}_channel_std.pt")
     if os.path.exists(mean_path):
@@ -297,8 +281,6 @@ def run(config) -> None:
         print(f"Channel-wise std: {std}")
 
 
-    # Always remove the directory after creating tarball - keep only the tarball
-    # But if skip_tarball is True, we must NOT remove the directory, regardless of remove_files flag.
     if config.remove_files and not config.skip_tarball: 
         import shutil
         shutil.rmtree(latents_output_dir)
@@ -306,7 +288,6 @@ def run(config) -> None:
     elif config.remove_files and config.skip_tarball:
         print("Warning: remove_files was set to True but skip_tarball is also True. Keeping files to avoid data loss.")
 
-    # Post-run instructions: how to extract the tarball
     if tarball_path:
         print(
             "\nTo extract into a new folder:\n"

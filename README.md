@@ -55,7 +55,7 @@ python scripts/compute_latents.py --filelist data/mimic.csv --basedir /path/to/i
 python scripts/classifier_train.py --data_dir /path/to/images --filelist data/mimic.csv --out_dir outputs/img --loss ldam --rw_method cb --drw --do_crossfold
 
 # 3. Latent-space classifier (ConvNeXt-Tiny on precomputed latents)
-python scripts/classifier_train.py --data_dir outputs/latents_flux2 --filelist data/mimic.csv --out_dir outputs/lat --model_name ConvNeXt-Tiny --is_latent --mean_path outputs/latents_flux2/latents_channel_mean.pt --loss ldam --rw_method cb --drw --do_crossfold
+python scripts/classifier_train.py --data_dir outputs/latents_flux2 --filelist data/mimic.csv --out_dir outputs/lat --model_name ConvNeXt-Tiny --is_latent --loss ldam --rw_method cb --drw --do_crossfold
 ```
 
 Swap in `classifier_train_noise_cond.py` for FiLM noise conditioning, `classifier_distill.py` for image-space distillation from a trained teacher, or `classifier_distill_noise_cond.py` for both. See `scripts/run_all_trainings.sh` for the full 5 AEs × 4 datasets sweep behind Table 1.

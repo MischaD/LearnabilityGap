@@ -37,33 +37,25 @@ def decode_latent_representation(latent_representations, model):
     return decoded_video
 
 def get_latent_model(path, device="cuda", modality="xray", ckpt_path=None):
-    # Load MedVAE if path starts with medvae_
     if path.startswith("medvae_"):
         from medvae import MVAE
         model = MVAE(model_name=path, modality=modality)
 
-        # Load finetuned weights if a checkpoint path is provided
         if ckpt_path is not None:
             print(f"Loading finetuned MedVAE weights from: {ckpt_path}")
-            # Use weights_only=False to support custom classes in older checkpoints/PyTorch versions
             state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)
             
-            # If the loaded object is a model instead of a state_dict, extract it
             if hasattr(state_dict, "state_dict"):
                 state_dict = state_dict.state_dict()
                 
-            # accelerator.save() wraps model keys; strip common prefixes
             cleaned = {}
             for k, v in state_dict.items():
-                # Strip prefixes like "module.", "_orig_mod.", etc.
                 new_k = k
                 for prefix in ["module.", "_orig_mod."]:
                     while new_k.startswith(prefix):
                         new_k = new_k[len(prefix):]
                 
-                # Fix for MVAE: checkpoint keys might be missing "model." prefix
                 if path.startswith("medvae_") and not new_k.startswith("model."):
-                    # Identify key components that need the prefix
                     if any(c in new_k for c in ["encoder", "decoder", "channel_ds", "channel_proj", "quant_conv", "post_quant_conv"]):
                         new_k = f"model.{new_k}"
                      

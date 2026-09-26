@@ -81,6 +81,7 @@ def bal_mixup_train(model, device, loss_fxn, optimizer, data_loader, history, ep
         history : pandas DataFrame
             Updated history data frame with metrics from completed training epoch
     """
+    model.train()
     pbar = tqdm.tqdm(enumerate(data_loader), total=len(data_loader), desc=f'Epoch {epoch}')
 
     running_loss = 0.
@@ -163,6 +164,7 @@ def train(model, device, loss_fxn, optimizer, data_loader, history, epoch, model
         history : pandas DataFrame
             Updated history data frame with metrics from completed training epoch
     """
+    model.train()
     pbar = tqdm.tqdm(enumerate(data_loader), total=len(data_loader), desc=f'Epoch {epoch}')
 
     running_loss = 0.

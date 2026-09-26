@@ -26,7 +26,7 @@ def cleanup() -> None:
 def process_reconstruction(
     rank: int,
     world_size: int,
-    file_list: str, # changed from List[str] to match BaseClassificationDataset
+    file_list: str,
     model: torch.nn.Module,
     config,
     latents_dir: str,
@@ -39,7 +39,6 @@ def process_reconstruction(
     model = model.to(device)
     model.eval()
 
-    # Reversed normalization params
     TARGET_STD = 0.5
     mean = mean.to(device).view(1, -1, 1, 1).to(next(model.parameters()).dtype)
     std = std.to(device).view(1, -1, 1, 1).to(next(model.parameters()).dtype)
@@ -68,7 +67,6 @@ def process_reconstruction(
             # Decode
             reconstructed = decode_latent_representation(cur_latents, model) # [B, 3, H, W]
             
-            # Post-process: VAE output is [-1, 1], map back to [0, 1] for PIL
             reconstructed = (reconstructed + 1) / 2
             reconstructed = reconstructed.clamp(0, 1)
             
@@ -102,13 +100,11 @@ def run(config) -> None:
     os.makedirs(config.save_dir, exist_ok=True)
     print(f"Reconstructing images to {config.save_dir}")
 
-    # Determine last image path for skip logic
     from src.data import get_data
     file_list, _ = get_data(config)
     last_rel_path = file_list[-1]
     last_img_path = os.path.join(config.save_dir, last_rel_path)
     
-    # Check for possible extensions (png, jpg, jpeg) if the path doesn't have one
     if not any(last_img_path.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg']):
         last_img_path += ".png"
     
@@ -125,7 +121,7 @@ def run(config) -> None:
         process_reconstruction,
         args=(
             world_size,
-            config.filelist, # Pass filelist string directly to BaseClassificationDataset
+            config.filelist,
             model,
             config,
             config.latents_dir,
