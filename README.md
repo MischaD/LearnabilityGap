@@ -25,6 +25,13 @@ We show it usually can't: across **5 autoencoder families** and **4 medical benc
 
 ## Setup
 
+```bash
+git clone https://github.com/MischaD/LearnabilityGap.git && cd LearnabilityGap
+pip install torch torchvision diffusers medvae scikit-learn pandas mlxtend ml_collections opencv-python tqdm einops matplotlib
+```
+
+Run everything from the repo root with `PYTHONPATH=.`. Provide the four dataset CSVs under `data/`; the `path` column resolves against whatever you pass as `--data_dir`.
+
 - **Autoencoders (5 families, frozen):** SD 1.4 · Flux.1 dev · Flux.2 dev · MedVAE · MedVAE fine-tuned per dataset
 - **Classifiers:** ResNet-50 (ImageNet-pretrained) for image space and reconstruction space; ConvNeXt-Tiny for latent space
 - **Datasets:**
@@ -37,6 +44,21 @@ We show it usually can't: across **5 autoencoder families** and **4 medical benc
 | Cardium | Echocardiography | CHD vs. normal | 6.6k |
 
 To probe and partially narrow the gap, we also introduce **noise-conditioned latent classifiers** (FiLM-modulated ConvNeXt-Tiny, distilled from an image-space ResNet-50 teacher), which offer **64× throughput** and **120× memory** gains over image-space models while serving as diagnostic tools for latent space quality.
+
+## Running
+
+```bash
+# 1. Precompute VAE latents (once per AE)
+python scripts/compute_latents.py --filelist data/mimic.csv --basedir /path/to/images --output_latents outputs/latents_flux2
+
+# 2. Image-space baseline (ResNet-50, LDAM+DRW, 5-fold CV)
+python scripts/classifier_train.py --data_dir /path/to/images --filelist data/mimic.csv --out_dir outputs/img --loss ldam --rw_method cb --drw --do_crossfold
+
+# 3. Latent-space classifier (ConvNeXt-Tiny on precomputed latents)
+python scripts/classifier_train.py --data_dir outputs/latents_flux2 --filelist data/mimic.csv --out_dir outputs/lat --model_name ConvNeXt-Tiny --is_latent --mean_path outputs/latents_flux2/latents_channel_mean.pt --loss ldam --rw_method cb --drw --do_crossfold
+```
+
+Swap in `classifier_train_noise_cond.py` for FiLM noise conditioning, `classifier_distill.py` for image-space distillation from a trained teacher, or `classifier_distill_noise_cond.py` for both. See `scripts/run_all_trainings.sh` for the full 5 AEs × 4 datasets sweep behind Table 1.
 
 ## Citation
 
